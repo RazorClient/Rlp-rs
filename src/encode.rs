@@ -1,10 +1,16 @@
 /// Represents an item in RLP encoding, which can be either a string (byte array) or a list of items.
 /// https://developer.electroneum.com/advanced/data-structures-and-encoding/recursive-length-prefix-rlp
-#[derive(Clone, Debug)]
+
 
 
 /// Todo : our user is having to take give bit string changethat and make fun to take any string and pass through
+/// make more fixes / think of optimastions and also look at 
+/// https://github.com/alloy-rs/rlp/blob/main/crates/rlp/src/encode.rshttps://github.com/alloy-rs/rlp/blob/main/crates/rlp/src/encode.rs
+/// https://github.com/paritytech/parity-common/blob/master/rlp/src/stream.rs
+#[derive(Clone, Debug)]
 pub enum RlpItem {
+    //string of represented as raw bytes.
+    // 
     String(Vec<u8>),
     List(Vec<RlpItem>),
 }
@@ -17,6 +23,11 @@ impl From<Vec<&str>> for RlpItem {
                 .map(|s| RlpItem::String(s.as_bytes().to_vec()))
                 .collect(),
         )
+    }
+}
+impl From<String> for RlpItem {
+    fn from(s: String) -> Self {
+        RlpItem::String(s.into_bytes())
     }
 }
 
@@ -95,28 +106,26 @@ fn encode_list(items: &[RlpItem]) -> Vec<u8> {
 /// Encodes the length of data with the given offset.
 fn encode_length(len: usize, offset: u8) -> Vec<u8> {
     if len < 56 {
-        // For lengths less than 56, the length is encoded in a single byte.
         vec![offset + len as u8]
     } else {
-        // For lengths >= 56, encode the length of the length.
-        let len_bytes = to_binary(len);
-        let mut result = vec![offset + 55 + len_bytes.len() as u8];
-        result.extend(len_bytes);
+        // Calculate the big-endian bytes of `len` without leading zeros.
+        let mut temp_len = len;
+        let mut len_bytes = [0u8; std::mem::size_of::<usize>()];
+        let mut i = len_bytes.len();
+
+        while temp_len > 0 {
+            i -= 1;
+            //extracts least significant digit
+            len_bytes[i] = (temp_len & 0xFF) as u8;
+            //shifts temp_len right by 8 bits
+            temp_len >>= 8;
+        }
+
+        let len_of_len = len_bytes.len() - i;
+        let mut result = Vec::with_capacity(1 + len_of_len);
+        result.push(offset + 55 + len_of_len as u8);
+        result.extend_from_slice(&len_bytes[i..]);
         result
     }
 }
 
-/// Converts a usize integer into its big-endian byte representation without leading zeros.
-fn to_binary(mut x: usize) -> Vec<u8> {
-    if x == 0 {
-        vec![0]
-    } else {
-        let mut bytes = Vec::new();
-        while x > 0 {
-            bytes.push((x % 256) as u8);
-            x /= 256;
-        }
-        bytes.reverse();
-        bytes
-    }
-}
